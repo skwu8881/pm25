@@ -1,0 +1,210 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Untitled Document</title>
+    <script src="https://d3js.org/d3.v3.js"></script>
+    <script src="topojson.min.js"></script>
+    <style>
+        .map-boundary {
+            stroke: #eee;
+        }
+        
+        #tooltip {
+            position: absolute;
+            /* left: 20px; */
+            /* top:  100px; */
+            background: #fff;
+            width: 150px;
+            height: auto;
+            padding: 0px 10px;
+            border-radius: 5px;
+            box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        #tooltip.hidden {
+            display: none;
+        }
+        /*隱藏提示*/
+        
+        #toolpm {
+            position: absolute;
+            /* left: 20px; */
+            /* top:  100px; */
+            background: #fff;
+            width: 150px;
+            height: auto;
+            padding: 0px 10px;
+            border-radius: 5px;
+            box-shadow: 5px 5px 10px rgba(0, 0, 0, 0.3);
+        }
+        /*
+        #toolpm.hidden {
+            display: none;
+        }
+*/
+    </style>
+
+</head>
+
+<body>
+    <div id="tooltip" class="hidden">
+        <p><strong id="city">Hello</strong></p>
+        <p id="industry">tooltip</p>
+    </div>
+    <div id="toolpm" class="hidden">
+        <p><strong id="citypm">台灣各縣市</strong></p>
+        <p id="industrypm">PM2.5空汙顯示</p>
+        <p id="NHI">呼吸道急診人數</p>
+    </div>
+    <svg width="900" height="600"></svg>
+    <script>
+        //結合兩筆資料來源
+        //        d3.json("population.json", function (dataSet) {
+        //            console.log(dataSet);
+        //            var population = [];
+        //            for (var i = 0; i < dataSet.length; i++) {
+        //                population[dataSet[i].COUNTYNAME] = dataSet[i].population;
+        //            }
+        //            console.log(population["新北市"]);
+        //
+        //            d3.json("topoTaiwan.json", function (topoData) {
+        //
+        //                bind(topoData, population);
+        //                render(dataSet);
+        //
+        //            });
+        //
+        //        });
+        d3.json("PM25.json", function (dataSet) {
+            //console.log(dataSet);
+            var PM25 = []; //定義空的陣列
+            for (var i = 0; i < dataSet.length; i++) {
+                PM25[dataSet[i].county] = dataSet[i].PM25; //json內的population
+            }
+            console.log(PM25);
+            // console.log(population["花蓮縣"]);
+            //1.地理資料檔: topoTaiwan.json
+            d3.json("topoTaiwan.json", function (topoData) {
+                bind(topoData, PM25); //將資料逐筆放入空的陣列中
+                render(dataSet);
+                // console.log(dataSet);
+            });
+        });
+        d3.csv("NHI_Acute.csv", function (dataSet) {
+            var NHI = [];
+            for (var i = 0; i < dataSet.length; i++) {
+                NHI[dataSet[i].county] = dataSet[i].NHIAcute; //json內的population
+            }
+            d3.json("topoTaiwan.json", function (NHIData) {
+                bind2(NHIData, NHI); //將資料逐筆放入空的陣列中
+                //console.log(dataSet);
+            });
+            //console.log(NHI);
+        });
+
+        //1.地理資料檔: topoTaiwan.json
+
+        function render(dataSet) {
+            //從這裡開始修改
+
+            var cScale = d3.scale.linear()
+                .domain([d3.min(dataSet, function (d) {
+                    return +d.PM25;
+                }), d3.max(dataSet, function (d) {
+                    return +d.PM25;
+                })])
+                .range(["#00ff45", "#fd1616"]);
+
+            var tmpColor;
+            d3.selectAll("path")
+                .attr({
+                    fill: function (d, i) {
+                        return cScale(d.properties.value);
+                    }
+                })
+                .on("mouseover", function (d) {
+                    tmpColor = d3.select(this).attr("fill");
+                    d3.select(this).attr({
+                        fill: "lightgreen"
+                    });
+                })
+                .on("mouseout", function (d1, i1) {
+                    d3.select(this).attr({
+                        fill: tmpColor
+                    });
+                    d3.select("#tooltip").classed("hidden", true);
+                })
+                .on("click", function (d) {
+                    console.log(d.properties.C_Name);
+                    var cor = d3.mouse(this);
+                    var xMouse = cor[0];
+                    var yMouse = cor[1];
+
+                    var tooltip = d3.select("#tooltip").style({
+                        left: (xMouse + 30) + "px",
+                        top: (yMouse + 30) + "px"
+                    });
+
+                    tooltip.select("#city").text(d.properties.C_Name);
+                    tooltip.select("#industry").text("呼吸道急診人數[" + d.properties.value2 + "]");
+                    // tooltip.select("#NHI").text("呼吸道急診人數[" + d.properties.value2 + "]");
+                    d3.select("#tooltip").classed("hidden", false);
+                });
+        }
+
+        function bind(topoData, population) {
+            // 2.地理投影器: 設定投影方式(麥卡托)、定位點([經,緯度])、縮放(scale)
+            var projection = d3.geo.mercator().center([121, 24]).scale(6000);
+
+            // 3.路徑產生器: d3.geo.path()
+            var path = d3.geo.path().projection(projection);
+
+            // 4.地理資料檔: 使用topojson.js載入地理資料
+            var topo = topojson.feature(topoData, topoData.objects["county"]);
+
+            //console.log(topo.features);
+
+            for (var i = 0; i < topo.features.length; i++) {
+                topo.features[i].properties.value = population[topo.features[i].properties.C_Name];
+
+            }
+            //console.log(topo.features);
+
+            // 綁定path與載入的地理資料(features:每一地理區劃)
+            var selection = d3.select("svg").selectAll("path").data(topo.features);
+            //console.log(topo.features);
+            selection.enter().append("path");
+            selection.exit().remove();
+            selection.classed("map-boundary", true).attr("d", path);
+        }
+        //綁定NHI內的資料到avlue2
+        function bind2(topoData, NHI) {
+            // 2.地理投影器: 設定投影方式(麥卡托)、定位點([經,緯度])、縮放(scale)
+            var projection = d3.geo.mercator().center([121, 24]).scale(6000);
+
+            // 3.路徑產生器: d3.geo.path()
+            var path = d3.geo.path().projection(projection);
+
+            // 4.地理資料檔: 使用topojson.js載入地理資料
+            var topo = topojson.feature(topoData, topoData.objects["county"]);
+
+            //console.log(topo.features);
+            for (var i = 0; i < topo.features.length; i++) {
+                topo.features[i].properties.value2 = NHI[topo.features[i].properties.C_Name];
+
+            }
+            console.log(topo.features);
+            // 綁定path與載入的地理資料(features:每一地理區劃)
+            var selection = d3.select("svg").selectAll("path").data(topo.features);
+            console.log(topo.features);
+            selection.enter().append("path");
+            selection.exit().remove();
+            selection.classed("map-boundary", true).attr("d", path);
+        }
+    </script>
+
+</body>
+
+</html>
